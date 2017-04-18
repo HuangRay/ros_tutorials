@@ -1,0 +1,107 @@
+#include <ros/ros.h>
+#include <geometry_msgs/Twist.h>
+#include <sensor_msgs/Joy.h>
+#include <math.h>
+
+class TeleopTurtle
+{
+public:
+  TeleopTurtle();
+
+private:
+  void joyCallback(const sensor_msgs::Joy::ConstPtr& joy);
+  
+  ros::NodeHandle nh_;
+
+  double linear_, angular_, rotate, speed, R_speed, L_speed, B_speed;
+  int l_scale_, a_scale_;
+  ros::Publisher vel_pub_;
+  ros::Subscriber joy_sub_;
+  
+};
+
+
+TeleopTurtle::TeleopTurtle():
+  angular_(0),
+  linear_(5)
+{
+
+  nh_.param("axis_linear", linear_, linear_);
+  nh_.param("axis_angular", angular_, angular_);
+  nh_.param("scale_angular", a_scale_, a_scale_);
+  nh_.param("scale_linear", l_scale_, l_scale_);
+
+  vel_pub_ = nh_.advertise<geometry_msgs::Twist>("turtle1/cmd_vel", 1);
+
+
+  joy_sub_ = nh_.subscribe<sensor_msgs::Joy>("joy", 10, &TeleopTurtle::joyCallback, this);
+
+}
+
+void TeleopTurtle::joyCallback(const sensor_msgs::Joy::ConstPtr& joy)
+{
+  geometry_msgs::Twist vel;
+  
+//  angle = atan2(joy->axes[linear_],joy->axes[angular_]);
+
+  speed = (1-joy->axes[linear_])*80;
+  B_speed = (joy->axes[2]-1)*80;
+  rotate = joy->axes[angular_]*3;
+//  vel.angular.z = a_scale_*joy->axes[angular_];
+//  vel.linear.x = l_scale_*joy->axes[linear_];
+  if(joy->axes[5]<1){		//axes RT < 1 =>forward
+	if(joy->axes[angular_]>0.2){	
+		L_speed = speed * (1-joy->axes[angular_]);
+		R_speed = speed;
+	}else if(joy->axes[angular_]<-0.2){
+		R_speed = speed*(1+joy->axes[angular_]);
+		L_speed = speed;
+	}else{
+		L_speed = speed;
+  		R_speed = speed;
+	}
+  }else if(joy->axes[2]<1){		//axes LT < 1 =>backward
+  	if(joy->axes[angular_]>0.2){
+		L_speed = B_speed * (1-joy->axes[angular_]);
+		R_speed = B_speed;
+	}else if(joy->axes[angular_]<-0.2){
+		R_speed = B_speed*(1+joy->axes[angular_]);
+		L_speed = B_speed;
+	}else{
+		L_speed = B_speed;
+  		R_speed = B_speed;
+	}
+  }else if(joy->axes[angular_]>0.2){	
+	R_speed = speed;
+  }else if(joy->axes[angular_]<-0.2){	
+	L_speed = speed;
+  }else{
+  	L_speed = 0;
+  	R_speed = 0;
+  }
+  if(joy->buttons[4]==1){
+	speed= 30;		//button LB == 1 ->rotate left
+	L_speed = -speed;
+	R_speed = speed;
+  }else if(joy->buttons[5]==1){			
+	speed= 30;		//button RB == 1 ->rotate right
+	L_speed = speed;
+	R_speed = -speed;
+  }
+  if(joy->buttons[1]==1){	//button B == 1 
+	L_speed = 0;
+  	R_speed = 0;
+  }
+  vel.linear.x=L_speed;
+  vel.linear.y=R_speed;
+  vel_pub_.publish(vel);
+}
+
+
+int main(int argc, char** argv)
+{
+  ros::init(argc, argv, "teleop_turtle");
+  TeleopTurtle teleop_turtle;
+
+  ros::spin();
+}
